@@ -5,7 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.components.binary_sensor import (
+    BinarySensorEntity,
+    BinarySensorEntityDescription,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -21,14 +24,11 @@ from .const import (
 )
 
 
-@dataclass(frozen=True)
-class SchoolDayBinarySensorDescription:
+@dataclass(frozen=True, kw_only=True)
+class SchoolDayBinarySensorDescription(BinarySensorEntityDescription):
     """Describe a School Day binary sensor."""
 
-    key: str
-    name: str
     value_fn: Callable[[SchoolDayState], bool]
-    device_class: str | None = None
 
 
 SENSORS: tuple[SchoolDayBinarySensorDescription, ...] = (
