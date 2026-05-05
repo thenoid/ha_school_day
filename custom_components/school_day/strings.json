@@ -1,14 +1,36 @@
 {
-    "domain": "school_day",
-    "name": "School Day?",
-    "codeowners": [
-        "@thenoid"
-    ],
-    "config_flow": true,
-    "documentation": "https://github.com/thenoid/ha_school_day",
-    "integration_type": "service",
-    "iot_class": "cloud_polling",
-    "issue_tracker": "https://github.com/thenoid/ha_school_day/issues",
-    "requirements": [],
-    "version": "0.2.0"
+  "config": {
+    "step": {
+      "user": {
+        "title": "School Day?",
+        "description": "Add a school name and one or more ICS calendar URLs. Optional school-year ranges are one per line, formatted like `2025-08-12 to 2026-05-22`.",
+        "data": {
+          "name": "School name",
+          "urls": "ICS calendar URLs",
+          "school_years": "Configured school-year ranges",
+          "no_school_patterns": "No-school event patterns",
+          "last_day_patterns": "Last-day event patterns",
+          "first_day_patterns": "First-day event patterns"
+        }
+      }
+    },
+    "error": {
+      "no_name": "Add a school name.",
+      "no_urls": "Add at least one ICS calendar URL.",
+      "invalid_school_years": "School-year ranges must be formatted like `2025-08-12 to 2026-05-22`, one per line."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "school_day": {
+        "name": "School Day"
+      },
+      "no_school": {
+        "name": "No School"
+      },
+      "summer_vacation": {
+        "name": "Summer Vacation"
+      }
+    }
+  }
 }
