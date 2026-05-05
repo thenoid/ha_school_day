@@ -56,3 +56,14 @@ published the next fall start date. Use one range per line:
 Calendar events still drive holiday and no-school detection. Configured ranges
 only decide whether a date is summer vacation when calendar first/last-day
 events are missing or incomplete.
+
+The setup flow also asks for a school name, which is used as the Home Assistant
+device name. Advanced setup options let you customize the event summary patterns
+used to detect no-school days, last-day boundaries, and first-day boundaries.
+Use one pattern per line. Defaults are:
+
+```text
+no school
+last day of school
+first day of school
+```

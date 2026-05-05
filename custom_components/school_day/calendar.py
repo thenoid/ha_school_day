@@ -6,7 +6,11 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 import re
 
-from .const import EVENT_FIRST_DAY, EVENT_LAST_DAY, EVENT_NO_SCHOOL
+from .const import (
+    DEFAULT_FIRST_DAY_PATTERNS,
+    DEFAULT_LAST_DAY_PATTERNS,
+    DEFAULT_NO_SCHOOL_PATTERNS,
+)
 
 
 @dataclass(frozen=True)
@@ -51,6 +55,15 @@ class SchoolDayState:
     configured_school_year: str | None
 
 
+@dataclass(frozen=True)
+class SchoolDayPatterns:
+    """Text patterns used to classify school calendar events."""
+
+    no_school: tuple[str, ...] = DEFAULT_NO_SCHOOL_PATTERNS
+    last_day: tuple[str, ...] = DEFAULT_LAST_DAY_PATTERNS
+    first_day: tuple[str, ...] = DEFAULT_FIRST_DAY_PATTERNS
+
+
 def parse_ics_calendar(ics_text: str) -> list[SchoolCalendarEvent]:
     """Parse VEVENT records from an ICS document.
 
@@ -86,20 +99,24 @@ def compute_school_day_state(
     events: list[SchoolCalendarEvent],
     today: date,
     school_years: list[SchoolYear] | None = None,
+    patterns: SchoolDayPatterns | None = None,
 ) -> SchoolDayState:
     """Compute school-day, no-school, and summer-vacation flags."""
     school_years = school_years or []
+    patterns = patterns or SchoolDayPatterns()
     events_today = [event for event in events if event.occurs_on(today)]
     matching_events = tuple(event.summary for event in events_today)
-    no_school_event = any(_is_no_school(event.summary) for event in events_today)
-    boundary = _current_school_year_boundary(events, today)
+    no_school_event = any(
+        _matches_any(event.summary, patterns.no_school) for event in events_today
+    )
+    boundary = _current_school_year_boundary(events, today, patterns)
     configured_school_year = _configured_school_year_for_day(school_years, today)
 
-    if boundary is not None and _is_first_day(boundary.summary):
+    if boundary is not None and _is_first_day(boundary.summary, patterns):
         summer_vacation = False
     elif boundary is not None and today == boundary.start:
-        summer_vacation = _is_last_day(boundary.summary)
-    elif boundary is not None and _is_last_day(boundary.summary):
+        summer_vacation = _is_last_day(boundary.summary, patterns)
+    elif boundary is not None and _is_last_day(boundary.summary, patterns):
         summer_vacation = configured_school_year is None
     elif school_years:
         summer_vacation = configured_school_year is None
@@ -139,6 +156,14 @@ def parse_school_years(value: str) -> list[SchoolYear]:
         school_years.append(SchoolYear(start=start, end=end))
 
     return school_years
+
+
+def parse_event_patterns(value: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    """Parse newline-delimited event summary patterns."""
+    patterns = tuple(
+        _normalized_summary(line) for line in value.splitlines() if line.strip()
+    )
+    return patterns or default
 
 
 def _unfold_lines(ics_text: str) -> list[str]:
@@ -190,12 +215,16 @@ def _unescape_ics_text(value: str) -> str:
 
 
 def _current_school_year_boundary(
-    events: list[SchoolCalendarEvent], today: date
+    events: list[SchoolCalendarEvent], today: date, patterns: SchoolDayPatterns
 ) -> SchoolCalendarEvent | None:
     boundaries = [
         event
         for event in events
-        if event.start <= today and (_is_first_day(event.summary) or _is_last_day(event.summary))
+        if event.start <= today
+        and (
+            _is_first_day(event.summary, patterns)
+            or _is_last_day(event.summary, patterns)
+        )
     ]
     if not boundaries:
         return None
@@ -216,16 +245,18 @@ def _normalized_summary(summary: str) -> str:
     return " ".join(summary.casefold().split())
 
 
-def _is_no_school(summary: str) -> bool:
-    return EVENT_NO_SCHOOL in _normalized_summary(summary)
-
-
-def _is_last_day(summary: str) -> bool:
-    return EVENT_LAST_DAY in _normalized_summary(summary)
-
-
-def _is_first_day(summary: str) -> bool:
+def _matches_any(summary: str, patterns: tuple[str, ...]) -> bool:
     normalized = _normalized_summary(summary)
-    return EVENT_FIRST_DAY in normalized and (
-        "student" in normalized or normalized == EVENT_FIRST_DAY
+    return any(pattern in normalized for pattern in patterns)
+
+
+def _is_last_day(summary: str, patterns: SchoolDayPatterns) -> bool:
+    return _matches_any(summary, patterns.last_day)
+
+
+def _is_first_day(summary: str, patterns: SchoolDayPatterns) -> bool:
+    normalized = _normalized_summary(summary)
+    return any(
+        pattern in normalized and ("student" in normalized or normalized == pattern)
+        for pattern in patterns.first_day
     )

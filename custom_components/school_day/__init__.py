@@ -15,12 +15,24 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .calendar import (
+    SchoolDayPatterns,
     SchoolDayState,
     SchoolYear,
     compute_school_day_state,
     parse_ics_calendar,
 )
-from .const import CONF_SCHOOL_YEARS, CONF_URLS, DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import (
+    CONF_FIRST_DAY_PATTERNS,
+    CONF_LAST_DAY_PATTERNS,
+    CONF_NO_SCHOOL_PATTERNS,
+    CONF_SCHOOL_YEARS,
+    CONF_URLS,
+    DEFAULT_FIRST_DAY_PATTERNS,
+    DEFAULT_LAST_DAY_PATTERNS,
+    DEFAULT_NO_SCHOOL_PATTERNS,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+)
 
 
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR]
@@ -31,7 +43,11 @@ class SchoolDayCoordinator(DataUpdateCoordinator[SchoolDayState]):
     """Fetch ICS calendars and calculate the current school state."""
 
     def __init__(
-        self, hass: HomeAssistant, urls: list[str], school_years: list[SchoolYear]
+        self,
+        hass: HomeAssistant,
+        urls: list[str],
+        school_years: list[SchoolYear],
+        patterns: SchoolDayPatterns,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
@@ -42,6 +58,7 @@ class SchoolDayCoordinator(DataUpdateCoordinator[SchoolDayState]):
         )
         self.urls = urls
         self.school_years = school_years
+        self.patterns = patterns
 
     async def _async_update_data(self) -> SchoolDayState:
         session = async_get_clientsession(self.hass)
@@ -56,7 +73,7 @@ class SchoolDayCoordinator(DataUpdateCoordinator[SchoolDayState]):
             raise UpdateFailed(f"Unable to fetch school calendar: {err}") from err
 
         return compute_school_day_state(
-            all_events, dt_util.now().date(), self.school_years
+            all_events, dt_util.now().date(), self.school_years, self.patterns
         )
 
 
@@ -69,7 +86,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         for item in entry.data.get(CONF_SCHOOL_YEARS, [])
     ]
-    coordinator = SchoolDayCoordinator(hass, entry.data[CONF_URLS], school_years)
+    patterns = SchoolDayPatterns(
+        no_school=tuple(
+            entry.data.get(CONF_NO_SCHOOL_PATTERNS, DEFAULT_NO_SCHOOL_PATTERNS)
+        ),
+        last_day=tuple(entry.data.get(CONF_LAST_DAY_PATTERNS, DEFAULT_LAST_DAY_PATTERNS)),
+        first_day=tuple(
+            entry.data.get(CONF_FIRST_DAY_PATTERNS, DEFAULT_FIRST_DAY_PATTERNS)
+        ),
+    )
+    coordinator = SchoolDayCoordinator(
+        hass, entry.data[CONF_URLS], school_years, patterns
+    )
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = coordinator

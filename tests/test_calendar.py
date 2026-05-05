@@ -31,7 +31,9 @@ def _load_calendar_module():
 
 calendar = _load_calendar_module()
 SchoolYear = calendar.SchoolYear
+SchoolDayPatterns = calendar.SchoolDayPatterns
 compute_school_day_state = calendar.compute_school_day_state
+parse_event_patterns = calendar.parse_event_patterns
 parse_ics_calendar = calendar.parse_ics_calendar
 parse_school_years = calendar.parse_school_years
 
@@ -145,3 +147,58 @@ def test_parse_school_years_accepts_multiple_range_separators() -> None:
         SchoolYear(date(2025, 8, 12), date(2026, 5, 22)),
         SchoolYear(date(2026, 8, 13), date(2027, 5, 21)),
     ]
+
+
+def test_custom_no_school_pattern_marks_no_school_day() -> None:
+    events = parse_ics_calendar(
+        """BEGIN:VCALENDAR
+BEGIN:VEVENT
+SUMMARY:District Closure
+DTSTART;VALUE=DATE:20260116
+DTEND;VALUE=DATE:20260117
+END:VEVENT
+END:VCALENDAR
+"""
+    )
+    patterns = SchoolDayPatterns(no_school=("district closure",))
+
+    state = compute_school_day_state(events, date(2026, 1, 16), patterns=patterns)
+
+    assert state.school_day is False
+    assert state.no_school is True
+
+
+def test_custom_boundary_patterns_control_summer_vacation() -> None:
+    events = parse_ics_calendar(
+        """BEGIN:VCALENDAR
+BEGIN:VEVENT
+SUMMARY:Term Complete
+DTSTART;VALUE=DATE:20260522
+DTEND;VALUE=DATE:20260523
+END:VEVENT
+BEGIN:VEVENT
+SUMMARY:Instruction Resumes Students
+DTSTART;VALUE=DATE:20260812
+DTEND;VALUE=DATE:20260813
+END:VEVENT
+END:VCALENDAR
+"""
+    )
+    patterns = SchoolDayPatterns(
+        last_day=("term complete",),
+        first_day=("instruction resumes",),
+    )
+
+    summer = compute_school_day_state(events, date(2026, 7, 1), patterns=patterns)
+    first_day = compute_school_day_state(events, date(2026, 8, 12), patterns=patterns)
+
+    assert summer.summer_vacation is True
+    assert first_day.summer_vacation is False
+
+
+def test_parse_event_patterns_normalizes_lines_and_uses_default_when_empty() -> None:
+    assert parse_event_patterns(" District Closure \n Snow Day \n", ("no school",)) == (
+        "district closure",
+        "snow day",
+    )
+    assert parse_event_patterns("", ("no school",)) == ("no school",)
