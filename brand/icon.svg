@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+  <title>School Day icon</title>
+  <rect width="256" height="256" rx="56" fill="#f8fafc"/>
+  <circle cx="200" cy="58" r="26" fill="#facc15"/>
+  <path d="M50 112h156v88H50z" fill="#ffffff" stroke="#334155" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M34 112 128 48l94 64z" fill="#ef4444" stroke="#334155" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M104 200v-54h48v54z" fill="#38bdf8" stroke="#334155" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M70 138h24v24H70zm92 0h24v24h-24z" fill="#bae6fd" stroke="#334155" stroke-width="8" stroke-linejoin="round"/>
+  <path d="M72 202h112" stroke="#334155" stroke-width="12" stroke-linecap="round"/>
+  <path d="M98 87h60" stroke="#ffffff" stroke-width="12" stroke-linecap="round"/>
+</svg>
