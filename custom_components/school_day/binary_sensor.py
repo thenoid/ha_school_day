@@ -28,6 +28,7 @@ class SchoolDayBinarySensorDescription:
     key: str
     name: str
     value_fn: Callable[[SchoolDayState], bool]
+    device_class: str | None = None
 
 
 SENSORS: tuple[SchoolDayBinarySensorDescription, ...] = (
@@ -96,4 +97,3 @@ class SchoolDayBinarySensor(CoordinatorEntity[SchoolDayCoordinator], BinarySenso
             ATTR_BOUNDARY_EVENT: state.boundary_event,
             ATTR_CONFIGURED_SCHOOL_YEAR: state.configured_school_year,
         }
-
