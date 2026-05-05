@@ -1,0 +1,16 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+.pycache/
+
+# Build output
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Local tooling
+.venv/
+.env
+.llm/
+

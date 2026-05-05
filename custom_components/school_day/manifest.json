@@ -1,0 +1,12 @@
+{
+  "domain": "school_day",
+  "name": "School Day?",
+  "codeowners": ["@thenoid"],
+  "config_flow": true,
+  "documentation": "https://github.com/thenoid/ha_school_day",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/thenoid/ha_school_day/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

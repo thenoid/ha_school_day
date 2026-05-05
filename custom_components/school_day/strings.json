@@ -1,0 +1,32 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "School Day?",
+        "description": "Add one or more ICS calendar URLs. Optional school-year ranges are one per line, formatted like `2025-08-12 to 2026-05-22`.",
+        "data": {
+          "urls": "ICS calendar URLs",
+          "school_years": "Configured school-year ranges"
+        }
+      }
+    },
+    "error": {
+      "no_urls": "Add at least one ICS calendar URL.",
+      "invalid_school_years": "School-year ranges must be formatted like `2025-08-12 to 2026-05-22`, one per line."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "school_day": {
+        "name": "School Day"
+      },
+      "no_school": {
+        "name": "No School"
+      },
+      "summer_vacation": {
+        "name": "Summer Vacation"
+      }
+    }
+  }
+}
+
