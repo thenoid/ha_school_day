@@ -123,7 +123,7 @@ def compute_school_day_state(
     else:
         summer_vacation = False
 
-    no_school = no_school_event or summer_vacation
+    no_school = no_school_event or summer_vacation or _is_weekend(today)
     return SchoolDayState(
         school_day=not no_school,
         no_school=no_school,
@@ -239,6 +239,10 @@ def _configured_school_year_for_day(
         if school_year.contains(today):
             return school_year
     return None
+
+
+def _is_weekend(day: date) -> bool:
+    return day.weekday() >= 5
 
 
 def _normalized_summary(summary: str) -> str:

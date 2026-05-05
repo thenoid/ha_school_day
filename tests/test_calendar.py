@@ -97,6 +97,29 @@ def test_configured_school_year_fills_missing_calendar_boundaries() -> None:
     assert school.configured_school_year == "2026-08-12..2027-05-21"
 
 
+def test_weekend_inside_configured_school_year_is_not_school_day() -> None:
+    school_years = [SchoolYear(date(2026, 8, 12), date(2027, 5, 21))]
+
+    saturday = compute_school_day_state([], date(2026, 9, 5), school_years)
+    sunday = compute_school_day_state([], date(2026, 9, 6), school_years)
+
+    assert saturday.school_day is False
+    assert saturday.no_school is True
+    assert saturday.summer_vacation is False
+    assert sunday.school_day is False
+    assert sunday.no_school is True
+    assert sunday.summer_vacation is False
+
+
+def test_weekday_inside_configured_school_year_remains_school_day() -> None:
+    school_years = [SchoolYear(date(2026, 8, 12), date(2027, 5, 21))]
+
+    state = compute_school_day_state([], date(2026, 9, 7), school_years)
+
+    assert state.school_day is True
+    assert state.no_school is False
+
+
 def test_calendar_boundary_overrides_configured_school_year() -> None:
     events = parse_ics_calendar(
         """BEGIN:VCALENDAR
