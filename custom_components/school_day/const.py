@@ -24,3 +24,10 @@ DEFAULT_FIRST_DAY_PATTERNS = (EVENT_FIRST_DAY,)
 ATTR_MATCHING_EVENTS = "matching_events"
 ATTR_BOUNDARY_EVENT = "boundary_event"
 ATTR_CONFIGURED_SCHOOL_YEAR = "configured_school_year"
+
+SERVICE_CHECK_DATE = "check_date"
+ATTR_DATE = "date"
+ATTR_SCHOOL_DAY = "school_day"
+ATTR_NO_SCHOOL = "no_school"
+ATTR_SUMMER_VACATION = "summer_vacation"
+ATTR_ENTRY_ID = "entry_id"
