@@ -1,0 +1,19 @@
+check_date:
+  name: Check Date
+  description: Return school-day flags for a specific date.
+  fields:
+    date:
+      name: Date
+      description: Date formatted as MM-DD-YYYY.
+      required: true
+      example: "08-15-2026"
+      selector:
+        text:
+
+    entry_id:
+      name: Config Entry ID
+      description: Optional config entry ID when multiple School Day entries exist.
+      required: false
+      example: "abc123def456"
+      selector:
+        text:

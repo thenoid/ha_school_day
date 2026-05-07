@@ -15,6 +15,20 @@ All entities include attributes for matching calendar events, the latest
 first/last-day boundary event, and the configured school-year range currently in
 effect.
 
+## Service: `school_day.check_date`
+
+Call this service with a `date` in `MM-DD-YYYY` format and it returns:
+
+- `school_day`
+- `no_school`
+- `summer_vacation`
+
+Example service data:
+
+```yaml
+date: "12-23-2026"
+```
+
 ## Configuration
 
 Install this repository's `custom_components/school_day` directory into your
