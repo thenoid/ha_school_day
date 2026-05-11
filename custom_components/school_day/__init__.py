@@ -75,25 +75,24 @@ async def _async_handle_check_date(call: ServiceCall) -> ServiceResponse:
             f"Invalid date '{target_date_raw}'. Use MM-DD-YYYY."
         ) from err
 
-    config_entries = call.hass.config_entries.async_entries(DOMAIN)
-    if not config_entries:
+    coordinators: dict[str, SchoolDayCoordinator] = call.hass.data.get(DOMAIN, {})
+    if not coordinators:
         raise ServiceValidationError("School Day is not configured.")
 
     entry_id = call.data.get(ATTR_ENTRY_ID)
     if entry_id:
-        config_entries = [
-            entry for entry in config_entries if entry.entry_id == entry_id
-        ]
-        if not config_entries:
+        coordinator = coordinators.get(entry_id)
+        if coordinator is None:
             raise ServiceValidationError(
                 f"No School Day config entry found for entry_id '{entry_id}'."
             )
-    elif len(config_entries) > 1:
+    elif len(coordinators) > 1:
         raise ServiceValidationError(
             "Multiple School Day entries found. Pass entry_id to select one."
         )
+    else:
+        coordinator = next(iter(coordinators.values()))
 
-    coordinator: SchoolDayCoordinator = config_entries[0].runtime_data
     await coordinator.async_request_refresh()
     state = compute_school_day_state(
         coordinator.events,
@@ -176,6 +175,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = coordinator
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
     if not hass.services.has_service(DOMAIN, SERVICE_CHECK_DATE):
         hass.services.async_register(
@@ -193,6 +193,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok and len(hass.config_entries.async_entries(DOMAIN)) == 1:
-        hass.services.async_remove(DOMAIN, SERVICE_CHECK_DATE)
+    if unload_ok:
+        loaded_coordinators: dict[str, SchoolDayCoordinator] = hass.data.get(DOMAIN, {})
+        loaded_coordinators.pop(entry.entry_id, None)
+        if not loaded_coordinators:
+            hass.data.pop(DOMAIN, None)
+            hass.services.async_remove(DOMAIN, SERVICE_CHECK_DATE)
     return unload_ok
