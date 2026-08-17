@@ -28,7 +28,7 @@ from .const import (
 class SchoolDayConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a School Day config flow."""
 
-    VERSION = 1
+    VERSION = 2
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None

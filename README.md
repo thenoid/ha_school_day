@@ -1,7 +1,7 @@
 # School Day?
 
 Home Assistant custom integration that creates binary sensors from one or more
-ICS school-calendar URLs.
+ICS school-calendar URLs or public Vega community-calendar URLs.
 
 ## Entities
 
@@ -53,10 +53,18 @@ For publishing, bump `version` in
 version and creates a GitHub release automatically after the change lands on
 `main` or `master`.
 
-Use one or more ICS URLs, one per line. Example:
+Use one or more calendar source URLs, one per line. ICS example:
 
 ```text
 https://www.calendarwiz.com/CalendarWiz_iCal.php?crd=brightoncanyons&cid%5B%5D=123299&lid%5B%5D=empty&
+```
+
+Public Vega community pages are also supported directly; the integration resolves
+the organization and retrieves the same public JSON event feed used by Vega's
+calendar. For example:
+
+```text
+https://webapp.vegaevents.com/community/brighton-high-school?view=calendar&calView=MONTH
 ```
 
 Optional static school-year ranges fill gaps when the calendar has not yet
@@ -78,6 +86,7 @@ Use one pattern per line. Defaults are:
 
 ```text
 no school
+no students
 last day of school
 first day of school
 ```

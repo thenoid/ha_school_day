@@ -1,0 +1,41 @@
+{
+  "items": [
+    {
+      "id": "[redacted-event-id]",
+      "name": "First Day of School",
+      "createdById": "[redacted-account-id]",
+      "groups": ["[redacted-group-id]"],
+      "spaces": ["[redacted-space-id]"],
+      "startTime": "2026-08-17T06:00:00Z",
+      "endTime": "2026-08-18T06:00:00Z",
+      "status": "Active",
+      "isAllDay": true,
+      "timeZoneName": "America/Denver",
+      "visibility": "Public"
+    },
+    {
+      "id": "[redacted-event-id]",
+      "name": "Evening practice",
+      "createdById": "[redacted-account-id]",
+      "groups": ["[redacted-group-id]"],
+      "spaces": ["[redacted-space-id]"],
+      "startTime": "2026-08-19T23:30:00Z",
+      "endTime": "2026-08-20T01:00:00Z",
+      "status": "Active",
+      "isAllDay": false,
+      "timeZoneName": "America/Denver",
+      "visibility": "Public"
+    },
+    {
+      "id": "[redacted-event-id]",
+      "name": "Cancelled event",
+      "createdById": "[redacted-account-id]",
+      "startTime": "2026-08-21T06:00:00Z",
+      "endTime": "2026-08-22T06:00:00Z",
+      "status": "Cancelled",
+      "isAllDay": true,
+      "timeZoneName": "America/Denver",
+      "visibility": "Public"
+    }
+  ]
+}

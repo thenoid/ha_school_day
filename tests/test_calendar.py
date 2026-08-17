@@ -1,10 +1,13 @@
 """Tests for school calendar calculations."""
 
-from datetime import date
+import asyncio
+from datetime import date, timedelta
 import importlib.util
+import json
 from pathlib import Path
 import sys
 import types
+from urllib.parse import parse_qs, urlparse
 
 
 def _load_calendar_module():
@@ -17,7 +20,7 @@ def _load_calendar_module():
     sys.modules.setdefault("custom_components", custom_components)
     sys.modules[package_name] = package
 
-    for module_name in ("const", "calendar"):
+    for module_name in ("const", "calendar", "vega"):
         path = root / "custom_components" / "school_day" / f"{module_name}.py"
         spec = importlib.util.spec_from_file_location(f"{package_name}.{module_name}", path)
         if spec is None or spec.loader is None:
@@ -36,6 +39,48 @@ compute_school_day_state = calendar.compute_school_day_state
 parse_event_patterns = calendar.parse_event_patterns
 parse_ics_calendar = calendar.parse_ics_calendar
 parse_school_years = calendar.parse_school_years
+vega = sys.modules["custom_components.school_day.vega"]
+VegaCalendarAdapter = vega.VegaCalendarAdapter
+is_vega_community_url = vega.is_vega_community_url
+parse_vega_events = vega.parse_vega_events
+
+
+class FakeResponse:
+    """Minimal async HTTP response for Vega adapter tests."""
+
+    def __init__(self, payload: object, status: int = 200) -> None:
+        self.payload = payload
+        self.status = status
+        self.status_checked = False
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback) -> None:
+        return None
+
+    def raise_for_status(self) -> None:
+        self.status_checked = True
+
+    async def json(self) -> object:
+        return self.payload
+
+
+class FakeSession:
+    """Minimal async HTTP session for Vega adapter tests."""
+
+    def __init__(self, responses: list[object]) -> None:
+        self.requests: list[str] = []
+        self.responses = responses
+
+    def get(self, url: str, *, timeout: int) -> FakeResponse:
+        assert timeout == 30
+        self.requests.append(url)
+        response = self.responses.pop(0)
+        if isinstance(response, tuple):
+            status, payload = response
+            return FakeResponse(payload, status)
+        return FakeResponse(response)
 
 
 def test_no_school_event_makes_school_day_false() -> None:
@@ -191,6 +236,24 @@ END:VCALENDAR
     assert state.no_school is True
 
 
+def test_no_students_event_uses_the_default_no_school_pattern() -> None:
+    events = parse_ics_calendar(
+        """BEGIN:VCALENDAR
+BEGIN:VEVENT
+SUMMARY:Teacher Professional Day (No Students)
+DTSTART;VALUE=DATE:20261002
+DTEND;VALUE=DATE:20261003
+END:VEVENT
+END:VCALENDAR
+"""
+    )
+
+    state = compute_school_day_state(events, date(2026, 10, 2))
+
+    assert state.school_day is False
+    assert state.no_school is True
+
+
 def test_custom_boundary_patterns_control_summer_vacation() -> None:
     events = parse_ics_calendar(
         """BEGIN:VCALENDAR
@@ -224,4 +287,131 @@ def test_parse_event_patterns_normalizes_lines_and_uses_default_when_empty() -> 
         "district closure",
         "snow day",
     )
-    assert parse_event_patterns("", ("no school",)) == ("no school",)
+    assert parse_event_patterns("", ("no school", "no students")) == (
+        "no school",
+        "no students",
+    )
+
+
+def test_parse_vega_events_normalizes_local_dates_and_skips_cancelled_events() -> None:
+    fixture = Path(__file__).with_name("fixtures") / "vega_events_redacted.json"
+
+    events = parse_vega_events(json.loads(fixture.read_text()))
+
+    assert events == [
+        calendar.SchoolCalendarEvent(
+            summary="First Day of School", start=date(2026, 8, 17), end=date(2026, 8, 18)
+        ),
+        calendar.SchoolCalendarEvent(
+            summary="Evening practice", start=date(2026, 8, 19), end=date(2026, 8, 20)
+        ),
+    ]
+
+
+def test_vega_adapter_resolves_community_url_and_fetches_public_events() -> None:
+    fixture = Path(__file__).with_name("fixtures") / "vega_events_redacted.json"
+    adapter = VegaCalendarAdapter.from_url(
+        "https://webapp.vegaevents.com/community/brighton-high-school?view=calendar"
+    )
+    assert adapter is not None
+    session = FakeSession(
+        [
+            {"organization": {"id": "public-org-id"}},
+            json.loads(fixture.read_text()),
+        ]
+    )
+
+    events = asyncio.run(adapter.async_fetch_events(session, date(2026, 8, 17)))
+
+    assert adapter.organization_id == "public-org-id"
+    assert events[0].summary == "First Day of School"
+    assert session.requests[0] == (
+        "https://api.vegaevents.com/public/v1/organizations/"
+        "brighton-high-school/community"
+    )
+    event_request = urlparse(session.requests[1])
+    assert event_request.path == "/public/v2/events/organization/public-org-id/public"
+    assert parse_qs(event_request.query) == {
+        "q": ["*"],
+        "limit": ["1000"],
+        "offset": ["0"],
+        "from": ["2025-08-12T00:00:00.000Z"],
+        "to": [
+            f"{(date(2026, 8, 17) + timedelta(days=550)).isoformat()}T23:59:59.999Z"
+        ],
+    }
+
+
+def test_vega_adapter_recognizes_only_public_community_urls() -> None:
+    assert is_vega_community_url(
+        "https://webapp.vegaevents.com/community/brighton-high-school?view=calendar"
+    )
+    assert VegaCalendarAdapter.from_url(
+        "https://webapp.vegaevents.com/community/brighton-high-school"
+    ) == VegaCalendarAdapter(handle="brighton-high-school")
+    assert VegaCalendarAdapter.from_url(
+        "https://webapp.vegaevents.com/community/brighton%2Dhigh-school"
+    ) == VegaCalendarAdapter(handle="brighton-high-school")
+    assert not is_vega_community_url("https://api.vegaevents.com/public/v2/events")
+    assert not is_vega_community_url("https://example.com/community/brighton-high-school")
+
+
+def test_vega_adapter_recovers_when_cached_organization_id_is_stale() -> None:
+    fixture = Path(__file__).with_name("fixtures") / "vega_events_redacted.json"
+    adapter = VegaCalendarAdapter(handle="brighton-high-school", organization_id="old-id")
+    session = FakeSession(
+        [
+            (404, {}),
+            {"organization": {"id": "replacement-id"}},
+            json.loads(fixture.read_text()),
+        ]
+    )
+
+    events = asyncio.run(adapter.async_fetch_events(session, date(2026, 8, 17)))
+
+    assert events[0].summary == "First Day of School"
+    assert adapter.organization_id == "replacement-id"
+    assert urlparse(session.requests[0]).path.endswith("/old-id/public")
+    assert session.requests[1] == (
+        "https://api.vegaevents.com/public/v1/organizations/"
+        "brighton-high-school/community"
+    )
+    assert urlparse(session.requests[2]).path.endswith("/replacement-id/public")
+
+
+def test_vega_events_use_utc_when_timezone_name_is_invalid() -> None:
+    events = parse_vega_events(
+        {
+            "items": [
+                {
+                    "name": "No School",
+                    "startTime": "2026-08-17T06:00:00Z",
+                    "endTime": "2026-08-18T06:00:00Z",
+                    "isAllDay": True,
+                    "timeZoneName": "../../invalid-zoneinfo-path",
+                }
+            ]
+        }
+    )
+
+    assert events == [
+        calendar.SchoolCalendarEvent(
+            summary="No School", start=date(2026, 8, 17), end=date(2026, 8, 18)
+        )
+    ]
+
+
+def test_vega_adapter_limits_paginated_event_fetches() -> None:
+    adapter = VegaCalendarAdapter(handle="brighton-high-school", organization_id="public-org-id")
+    session = FakeSession(
+        [{"items": [{}] * vega.VEGA_PAGE_SIZE} for _ in range(vega.VEGA_MAX_PAGES)]
+    )
+
+    try:
+        asyncio.run(adapter.async_fetch_events(session, date(2026, 8, 17)))
+    except ValueError as err:
+        assert str(err) == f"Vega events response exceeded {vega.VEGA_MAX_PAGES} pages"
+    else:
+        raise AssertionError("Expected Vega pagination guard to raise ValueError")
+
+    assert len(session.requests) == vega.VEGA_MAX_PAGES
