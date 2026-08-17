@@ -86,6 +86,7 @@ Use one pattern per line. Defaults are:
 
 ```text
 no school
+no students
 last day of school
 first day of school
 ```

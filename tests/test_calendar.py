@@ -198,6 +198,24 @@ END:VCALENDAR
     assert state.no_school is True
 
 
+def test_no_students_event_uses_the_default_no_school_pattern() -> None:
+    events = parse_ics_calendar(
+        """BEGIN:VCALENDAR
+BEGIN:VEVENT
+SUMMARY:Teacher Professional Day (No Students)
+DTSTART;VALUE=DATE:20261002
+DTEND;VALUE=DATE:20261003
+END:VEVENT
+END:VCALENDAR
+"""
+    )
+
+    state = compute_school_day_state(events, date(2026, 10, 2))
+
+    assert state.school_day is False
+    assert state.no_school is True
+
+
 def test_custom_boundary_patterns_control_summer_vacation() -> None:
     events = parse_ics_calendar(
         """BEGIN:VCALENDAR
@@ -231,7 +249,10 @@ def test_parse_event_patterns_normalizes_lines_and_uses_default_when_empty() -> 
         "district closure",
         "snow day",
     )
-    assert parse_event_patterns("", ("no school",)) == ("no school",)
+    assert parse_event_patterns("", ("no school", "no students")) == (
+        "no school",
+        "no students",
+    )
 
 
 def test_parse_vega_events_normalizes_local_dates_and_skips_cancelled_events() -> None:

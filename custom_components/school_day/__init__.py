@@ -34,6 +34,7 @@ from .const import (
     DEFAULT_FIRST_DAY_PATTERNS,
     DEFAULT_LAST_DAY_PATTERNS,
     DEFAULT_NO_SCHOOL_PATTERNS,
+    EVENT_NO_SCHOOL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     ATTR_DATE,
@@ -48,6 +49,7 @@ from .vega import VegaCalendarAdapter
 
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR]
 _LOGGER = logging.getLogger(__name__)
+_LEGACY_DEFAULT_NO_SCHOOL_PATTERNS = (EVENT_NO_SCHOOL,)
 SERVICE_SCHEMA_CHECK_DATE = vol.Schema(
     {
         vol.Required(ATTR_DATE): vol.All(cv.string, vol.Match(r"^\d{2}-\d{2}-\d{4}$")),
@@ -152,6 +154,24 @@ class SchoolDayCoordinator(DataUpdateCoordinator[SchoolDayState]):
         return compute_school_day_state(
             all_events, dt_util.now().date(), self.school_years, self.patterns
         )
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Add new default no-school patterns without changing custom patterns."""
+    if entry.version > 2:
+        return False
+    if entry.version == 2:
+        return True
+
+    data = dict(entry.data)
+    no_school_patterns = tuple(
+        data.get(CONF_NO_SCHOOL_PATTERNS, _LEGACY_DEFAULT_NO_SCHOOL_PATTERNS)
+    )
+    if no_school_patterns == _LEGACY_DEFAULT_NO_SCHOOL_PATTERNS:
+        data[CONF_NO_SCHOOL_PATTERNS] = list(DEFAULT_NO_SCHOOL_PATTERNS)
+
+    hass.config_entries.async_update_entry(entry, data=data, version=2)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
