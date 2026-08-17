@@ -8,6 +8,7 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import selector
 
 from .calendar import parse_event_patterns, parse_school_years
 from .const import (
@@ -88,23 +89,33 @@ class SchoolDayConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_NAME, default=DEFAULT_NAME): str,
-                    vol.Required(CONF_URLS): str,
-                    vol.Optional(CONF_SCHOOL_YEARS, default=""): str,
+                    vol.Required(CONF_URLS): selector.TextSelector(
+                        selector.TextSelectorConfig(multiline=True)
+                    ),
+                    vol.Optional(CONF_SCHOOL_YEARS, default=""): selector.TextSelector(
+                        selector.TextSelectorConfig(multiline=True)
+                    ),
                     vol.Optional(
                         CONF_NO_SCHOOL_PATTERNS,
                         default="\n".join(DEFAULT_NO_SCHOOL_PATTERNS),
                         description={"advanced": True},
-                    ): str,
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(multiline=True)
+                    ),
                     vol.Optional(
                         CONF_LAST_DAY_PATTERNS,
                         default="\n".join(DEFAULT_LAST_DAY_PATTERNS),
                         description={"advanced": True},
-                    ): str,
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(multiline=True)
+                    ),
                     vol.Optional(
                         CONF_FIRST_DAY_PATTERNS,
                         default="\n".join(DEFAULT_FIRST_DAY_PATTERNS),
                         description={"advanced": True},
-                    ): str,
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(multiline=True)
+                    ),
                 }
             ),
             errors=errors,
