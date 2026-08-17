@@ -89,9 +89,9 @@ async def _async_handle_check_date(call: ServiceCall) -> ServiceResponse:
     else:
         coordinator = next(iter(coordinators.values()))
 
-    await coordinator.async_request_refresh()
+    events = await coordinator.async_fetch_events_for_date(target_date)
     state = compute_school_day_state(
-        coordinator.events,
+        events,
         target_date,
         coordinator.school_years,
         coordinator.patterns,
@@ -133,6 +133,16 @@ class SchoolDayCoordinator(DataUpdateCoordinator[SchoolDayState]):
         self.events: list[SchoolCalendarEvent] = []
 
     async def _async_update_data(self) -> SchoolDayState:
+        all_events = await self.async_fetch_events_for_date(dt_util.now().date())
+        self.events = all_events
+        return compute_school_day_state(
+            all_events, dt_util.now().date(), self.school_years, self.patterns
+        )
+
+    async def async_fetch_events_for_date(
+        self, anchor_date: date
+    ) -> list[SchoolCalendarEvent]:
+        """Fetch source events in the window required to evaluate a date."""
         session = async_get_clientsession(self.hass)
         all_events = []
 
@@ -141,7 +151,7 @@ class SchoolDayCoordinator(DataUpdateCoordinator[SchoolDayState]):
                 vega_adapter = self.vega_adapters.get(url)
                 if vega_adapter is not None:
                     all_events.extend(
-                        await vega_adapter.async_fetch_events(session, dt_util.now().date())
+                        await vega_adapter.async_fetch_events(session, anchor_date)
                     )
                     continue
 
@@ -151,10 +161,7 @@ class SchoolDayCoordinator(DataUpdateCoordinator[SchoolDayState]):
         except (ClientError, TimeoutError, ValueError) as err:
             raise UpdateFailed(f"Unable to fetch school calendar: {err}") from err
 
-        self.events = all_events
-        return compute_school_day_state(
-            all_events, dt_util.now().date(), self.school_years, self.patterns
-        )
+        return all_events
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
-from urllib.parse import quote, urlencode, urlparse
+from urllib.parse import quote, unquote, urlencode, urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .calendar import SchoolCalendarEvent
@@ -13,6 +14,8 @@ from .calendar import SchoolCalendarEvent
 
 VEGA_API_URL = "https://api.vegaevents.com"
 VEGA_PAGE_SIZE = 1000
+VEGA_MAX_PAGES = 10
+VEGA_FETCH_TIMEOUT = 90
 VEGA_LOOKBACK_DAYS = 370
 VEGA_LOOKAHEAD_DAYS = 550
 _VEGA_COMMUNITY_HOSTS = frozenset(
@@ -22,27 +25,46 @@ _VEGA_COMMUNITY_HOSTS = frozenset(
 
 def is_vega_community_url(url: str) -> bool:
     """Return whether a URL is a public Vega community page."""
+    return _community_handle_from_url(url) is not None
+
+
+def _community_handle_from_url(url: str) -> str | None:
+    """Extract and decode a Vega community handle from a public page URL."""
     try:
         parsed = urlparse(url)
     except ValueError:
-        return False
+        return None
 
     path = [part for part in parsed.path.split("/") if part]
-    return (
+    if not (
         parsed.scheme in {"http", "https"}
         and parsed.hostname is not None
         and parsed.hostname.casefold() in _VEGA_COMMUNITY_HOSTS
         and len(path) >= 2
         and path[0].casefold() == "community"
-        and bool(path[1])
-    )
+    ):
+        return None
+    return unquote(path[1]) or None
 
 
-def parse_vega_events(payload: dict[str, Any]) -> list[SchoolCalendarEvent]:
+def parse_vega_events(payload: object) -> list[SchoolCalendarEvent]:
     """Normalize Vega's public event-search response into calendar events."""
+    return _parse_vega_event_items(_response_items(payload))
+
+
+def _response_items(payload: object) -> list[Any]:
+    """Validate and return the item list from a Vega events response."""
+    if not isinstance(payload, dict):
+        raise ValueError("Vega events response must be a JSON object")
+
     items = payload.get("items")
     if not isinstance(items, list):
         raise ValueError("Vega events response does not contain an items list")
+    return items
+
+
+def _parse_vega_event_items(items: list[Any]) -> list[SchoolCalendarEvent]:
+    """Convert validated Vega event objects into normalized calendar events."""
 
     events: list[SchoolCalendarEvent] = []
     for item in items:
@@ -89,47 +111,63 @@ class VegaCalendarAdapter:
     @classmethod
     def from_url(cls, url: str) -> VegaCalendarAdapter | None:
         """Create an adapter when *url* is a Vega public community page."""
-        if not is_vega_community_url(url):
+        handle = _community_handle_from_url(url)
+        if handle is None:
             return None
 
-        handle = [part for part in urlparse(url).path.split("/") if part][1]
         return cls(handle=handle)
 
     async def async_fetch_events(
-        self, session: Any, today: date
+        self, session: Any, anchor_date: date
     ) -> list[SchoolCalendarEvent]:
-        """Fetch the date window needed for school-day calculations."""
-        if self.organization_id is None:
-            self.organization_id = await self._async_fetch_organization_id(session)
+        """Fetch events around an anchor date, re-resolving a stale organization ID once."""
+        for attempt in range(2):
+            if self.organization_id is None:
+                self.organization_id = await self._async_fetch_organization_id(session)
+
+            try:
+                return await self._async_fetch_events_for_organization(
+                    session, anchor_date, self.organization_id
+                )
+            except _StaleVegaOrganizationError as err:
+                self.organization_id = None
+                if attempt:
+                    raise ValueError(
+                        "Vega organization could not be resolved for this community handle"
+                    ) from err
+
+        raise RuntimeError("Vega organization retry loop exited unexpectedly")
+
+    async def _async_fetch_events_for_organization(
+        self, session: Any, anchor_date: date, organization_id: str
+    ) -> list[SchoolCalendarEvent]:
+        """Fetch one bounded page sequence for a resolved organization."""
 
         start = datetime.combine(
-            today - timedelta(days=VEGA_LOOKBACK_DAYS), time.min, timezone.utc
+            anchor_date - timedelta(days=VEGA_LOOKBACK_DAYS), time.min, timezone.utc
         )
         end = datetime.combine(
-            today + timedelta(days=VEGA_LOOKAHEAD_DAYS), time.max, timezone.utc
+            anchor_date + timedelta(days=VEGA_LOOKAHEAD_DAYS), time.max, timezone.utc
         )
         events: list[SchoolCalendarEvent] = []
         offset = 0
 
-        while True:
-            url = _events_url(self.organization_id, start, end, offset)
-            async with session.get(url, timeout=30) as response:
-                response.raise_for_status()
-                payload = await response.json()
+        async with asyncio.timeout(VEGA_FETCH_TIMEOUT):
+            for _ in range(VEGA_MAX_PAGES):
+                url = _events_url(organization_id, start, end, offset)
+                async with session.get(url, timeout=30) as response:
+                    if response.status == 404:
+                        raise _StaleVegaOrganizationError
+                    response.raise_for_status()
+                    payload = await response.json()
 
-            if not isinstance(payload, dict):
-                raise ValueError("Vega events response must be a JSON object")
-            items = payload.get("items")
-            if not isinstance(items, list):
-                raise ValueError("Vega events response does not contain an items list")
+                items = _response_items(payload)
+                events.extend(_parse_vega_event_items(items))
+                if len(items) < VEGA_PAGE_SIZE:
+                    return events
+                offset += len(items)
 
-            events.extend(parse_vega_events(payload))
-            if len(items) < VEGA_PAGE_SIZE:
-                return events
-
-            offset += len(items)
-            if offset > 100_000:
-                raise ValueError("Vega events response exceeded 100,000 items")
+        raise ValueError(f"Vega events response exceeded {VEGA_MAX_PAGES} pages")
 
     async def _async_fetch_organization_id(self, session: Any) -> str:
         """Resolve a public community handle to its Vega organization ID."""
@@ -182,7 +220,7 @@ def _event_timezone(value: object) -> timezone | ZoneInfo:
     if isinstance(value, str) and value:
         try:
             return ZoneInfo(value)
-        except ZoneInfoNotFoundError:
+        except (ValueError, ZoneInfoNotFoundError):
             pass
     return timezone.utc
 
@@ -211,3 +249,7 @@ def _event_end_date(
     else:
         end_date = end.date() + timedelta(days=1)
     return max(end_date, start_date + timedelta(days=1))
+
+
+class _StaleVegaOrganizationError(Exception):
+    """Raised when an events request cannot find a cached organization ID."""

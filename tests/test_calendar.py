@@ -45,6 +45,44 @@ is_vega_community_url = vega.is_vega_community_url
 parse_vega_events = vega.parse_vega_events
 
 
+class FakeResponse:
+    """Minimal async HTTP response for Vega adapter tests."""
+
+    def __init__(self, payload: object, status: int = 200) -> None:
+        self.payload = payload
+        self.status = status
+        self.status_checked = False
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback) -> None:
+        return None
+
+    def raise_for_status(self) -> None:
+        self.status_checked = True
+
+    async def json(self) -> object:
+        return self.payload
+
+
+class FakeSession:
+    """Minimal async HTTP session for Vega adapter tests."""
+
+    def __init__(self, responses: list[object]) -> None:
+        self.requests: list[str] = []
+        self.responses = responses
+
+    def get(self, url: str, *, timeout: int) -> FakeResponse:
+        assert timeout == 30
+        self.requests.append(url)
+        response = self.responses.pop(0)
+        if isinstance(response, tuple):
+            status, payload = response
+            return FakeResponse(payload, status)
+        return FakeResponse(response)
+
+
 def test_no_school_event_makes_school_day_false() -> None:
     events = parse_ics_calendar(
         """BEGIN:VCALENDAR
@@ -271,33 +309,6 @@ def test_parse_vega_events_normalizes_local_dates_and_skips_cancelled_events() -
 
 
 def test_vega_adapter_resolves_community_url_and_fetches_public_events() -> None:
-    class FakeResponse:
-        def __init__(self, payload: dict) -> None:
-            self.payload = payload
-            self.status_checked = False
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, traceback) -> None:
-            return None
-
-        def raise_for_status(self) -> None:
-            self.status_checked = True
-
-        async def json(self) -> dict:
-            return self.payload
-
-    class FakeSession:
-        def __init__(self, responses: list[dict]) -> None:
-            self.requests: list[str] = []
-            self.responses = responses
-
-        def get(self, url: str, *, timeout: int) -> FakeResponse:
-            assert timeout == 30
-            self.requests.append(url)
-            return FakeResponse(self.responses.pop(0))
-
     fixture = Path(__file__).with_name("fixtures") / "vega_events_redacted.json"
     adapter = VegaCalendarAdapter.from_url(
         "https://webapp.vegaevents.com/community/brighton-high-school?view=calendar"
@@ -338,5 +349,69 @@ def test_vega_adapter_recognizes_only_public_community_urls() -> None:
     assert VegaCalendarAdapter.from_url(
         "https://webapp.vegaevents.com/community/brighton-high-school"
     ) == VegaCalendarAdapter(handle="brighton-high-school")
+    assert VegaCalendarAdapter.from_url(
+        "https://webapp.vegaevents.com/community/brighton%2Dhigh-school"
+    ) == VegaCalendarAdapter(handle="brighton-high-school")
     assert not is_vega_community_url("https://api.vegaevents.com/public/v2/events")
     assert not is_vega_community_url("https://example.com/community/brighton-high-school")
+
+
+def test_vega_adapter_recovers_when_cached_organization_id_is_stale() -> None:
+    fixture = Path(__file__).with_name("fixtures") / "vega_events_redacted.json"
+    adapter = VegaCalendarAdapter(handle="brighton-high-school", organization_id="old-id")
+    session = FakeSession(
+        [
+            (404, {}),
+            {"organization": {"id": "replacement-id"}},
+            json.loads(fixture.read_text()),
+        ]
+    )
+
+    events = asyncio.run(adapter.async_fetch_events(session, date(2026, 8, 17)))
+
+    assert events[0].summary == "First Day of School"
+    assert adapter.organization_id == "replacement-id"
+    assert urlparse(session.requests[0]).path.endswith("/old-id/public")
+    assert session.requests[1] == (
+        "https://api.vegaevents.com/public/v1/organizations/"
+        "brighton-high-school/community"
+    )
+    assert urlparse(session.requests[2]).path.endswith("/replacement-id/public")
+
+
+def test_vega_events_use_utc_when_timezone_name_is_invalid() -> None:
+    events = parse_vega_events(
+        {
+            "items": [
+                {
+                    "name": "No School",
+                    "startTime": "2026-08-17T06:00:00Z",
+                    "endTime": "2026-08-18T06:00:00Z",
+                    "isAllDay": True,
+                    "timeZoneName": "../../invalid-zoneinfo-path",
+                }
+            ]
+        }
+    )
+
+    assert events == [
+        calendar.SchoolCalendarEvent(
+            summary="No School", start=date(2026, 8, 17), end=date(2026, 8, 18)
+        )
+    ]
+
+
+def test_vega_adapter_limits_paginated_event_fetches() -> None:
+    adapter = VegaCalendarAdapter(handle="brighton-high-school", organization_id="public-org-id")
+    session = FakeSession(
+        [{"items": [{}] * vega.VEGA_PAGE_SIZE} for _ in range(vega.VEGA_MAX_PAGES)]
+    )
+
+    try:
+        asyncio.run(adapter.async_fetch_events(session, date(2026, 8, 17)))
+    except ValueError as err:
+        assert str(err) == f"Vega events response exceeded {vega.VEGA_MAX_PAGES} pages"
+    else:
+        raise AssertionError("Expected Vega pagination guard to raise ValueError")
+
+    assert len(session.requests) == vega.VEGA_MAX_PAGES
