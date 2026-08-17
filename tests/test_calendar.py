@@ -1,10 +1,13 @@
 """Tests for school calendar calculations."""
 
-from datetime import date
+import asyncio
+from datetime import date, timedelta
 import importlib.util
+import json
 from pathlib import Path
 import sys
 import types
+from urllib.parse import parse_qs, urlparse
 
 
 def _load_calendar_module():
@@ -17,7 +20,7 @@ def _load_calendar_module():
     sys.modules.setdefault("custom_components", custom_components)
     sys.modules[package_name] = package
 
-    for module_name in ("const", "calendar"):
+    for module_name in ("const", "calendar", "vega"):
         path = root / "custom_components" / "school_day" / f"{module_name}.py"
         spec = importlib.util.spec_from_file_location(f"{package_name}.{module_name}", path)
         if spec is None or spec.loader is None:
@@ -36,6 +39,10 @@ compute_school_day_state = calendar.compute_school_day_state
 parse_event_patterns = calendar.parse_event_patterns
 parse_ics_calendar = calendar.parse_ics_calendar
 parse_school_years = calendar.parse_school_years
+vega = sys.modules["custom_components.school_day.vega"]
+VegaCalendarAdapter = vega.VegaCalendarAdapter
+is_vega_community_url = vega.is_vega_community_url
+parse_vega_events = vega.parse_vega_events
 
 
 def test_no_school_event_makes_school_day_false() -> None:
@@ -225,3 +232,90 @@ def test_parse_event_patterns_normalizes_lines_and_uses_default_when_empty() -> 
         "snow day",
     )
     assert parse_event_patterns("", ("no school",)) == ("no school",)
+
+
+def test_parse_vega_events_normalizes_local_dates_and_skips_cancelled_events() -> None:
+    fixture = Path(__file__).with_name("fixtures") / "vega_events_redacted.json"
+
+    events = parse_vega_events(json.loads(fixture.read_text()))
+
+    assert events == [
+        calendar.SchoolCalendarEvent(
+            summary="First Day of School", start=date(2026, 8, 17), end=date(2026, 8, 18)
+        ),
+        calendar.SchoolCalendarEvent(
+            summary="Evening practice", start=date(2026, 8, 19), end=date(2026, 8, 20)
+        ),
+    ]
+
+
+def test_vega_adapter_resolves_community_url_and_fetches_public_events() -> None:
+    class FakeResponse:
+        def __init__(self, payload: dict) -> None:
+            self.payload = payload
+            self.status_checked = False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback) -> None:
+            return None
+
+        def raise_for_status(self) -> None:
+            self.status_checked = True
+
+        async def json(self) -> dict:
+            return self.payload
+
+    class FakeSession:
+        def __init__(self, responses: list[dict]) -> None:
+            self.requests: list[str] = []
+            self.responses = responses
+
+        def get(self, url: str, *, timeout: int) -> FakeResponse:
+            assert timeout == 30
+            self.requests.append(url)
+            return FakeResponse(self.responses.pop(0))
+
+    fixture = Path(__file__).with_name("fixtures") / "vega_events_redacted.json"
+    adapter = VegaCalendarAdapter.from_url(
+        "https://webapp.vegaevents.com/community/brighton-high-school?view=calendar"
+    )
+    assert adapter is not None
+    session = FakeSession(
+        [
+            {"organization": {"id": "public-org-id"}},
+            json.loads(fixture.read_text()),
+        ]
+    )
+
+    events = asyncio.run(adapter.async_fetch_events(session, date(2026, 8, 17)))
+
+    assert adapter.organization_id == "public-org-id"
+    assert events[0].summary == "First Day of School"
+    assert session.requests[0] == (
+        "https://api.vegaevents.com/public/v1/organizations/"
+        "brighton-high-school/community"
+    )
+    event_request = urlparse(session.requests[1])
+    assert event_request.path == "/public/v2/events/organization/public-org-id/public"
+    assert parse_qs(event_request.query) == {
+        "q": ["*"],
+        "limit": ["1000"],
+        "offset": ["0"],
+        "from": ["2025-08-12T00:00:00.000Z"],
+        "to": [
+            f"{(date(2026, 8, 17) + timedelta(days=550)).isoformat()}T23:59:59.999Z"
+        ],
+    }
+
+
+def test_vega_adapter_recognizes_only_public_community_urls() -> None:
+    assert is_vega_community_url(
+        "https://webapp.vegaevents.com/community/brighton-high-school?view=calendar"
+    )
+    assert VegaCalendarAdapter.from_url(
+        "https://webapp.vegaevents.com/community/brighton-high-school"
+    ) == VegaCalendarAdapter(handle="brighton-high-school")
+    assert not is_vega_community_url("https://api.vegaevents.com/public/v2/events")
+    assert not is_vega_community_url("https://example.com/community/brighton-high-school")

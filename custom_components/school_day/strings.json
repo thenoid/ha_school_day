@@ -3,10 +3,10 @@
     "step": {
       "user": {
         "title": "School Day?",
-        "description": "Add a school name and one or more ICS calendar URLs. Optional school-year ranges are one per line, formatted like `2025-08-12 to 2026-05-22`.",
+        "description": "Add a school name and one or more calendar source URLs. Use ICS URLs or public Vega community URLs. Optional school-year ranges are one per line, formatted like `2025-08-12 to 2026-05-22`.",
         "data": {
           "name": "School name",
-          "urls": "ICS calendar URLs",
+          "urls": "Calendar source URLs (ICS or Vega)",
           "school_years": "Configured school-year ranges",
           "no_school_patterns": "No-school event patterns",
           "last_day_patterns": "Last-day event patterns",
@@ -16,7 +16,7 @@
     },
     "error": {
       "no_name": "Add a school name.",
-      "no_urls": "Add at least one ICS calendar URL.",
+      "no_urls": "Add at least one calendar source URL.",
       "invalid_school_years": "School-year ranges must be formatted like `2025-08-12 to 2026-05-22`, one per line."
     }
   },

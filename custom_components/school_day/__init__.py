@@ -43,6 +43,7 @@ from .const import (
     ATTR_SUMMER_VACATION,
     SERVICE_CHECK_DATE,
 )
+from .vega import VegaCalendarAdapter
 
 
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR]
@@ -102,7 +103,7 @@ async def _async_handle_check_date(call: ServiceCall) -> ServiceResponse:
 
 
 class SchoolDayCoordinator(DataUpdateCoordinator[SchoolDayState]):
-    """Fetch ICS calendars and calculate the current school state."""
+    """Fetch calendar sources and calculate the current school state."""
 
     def __init__(
         self,
@@ -119,6 +120,11 @@ class SchoolDayCoordinator(DataUpdateCoordinator[SchoolDayState]):
             update_interval=DEFAULT_SCAN_INTERVAL,
         )
         self.urls = urls
+        self.vega_adapters = {
+            url: adapter
+            for url in urls
+            if (adapter := VegaCalendarAdapter.from_url(url)) is not None
+        }
         self.school_years = school_years
         self.patterns = patterns
         self.events: list[SchoolCalendarEvent] = []
@@ -129,10 +135,17 @@ class SchoolDayCoordinator(DataUpdateCoordinator[SchoolDayState]):
 
         try:
             for url in self.urls:
-                response = await session.get(url, timeout=30)
-                response.raise_for_status()
-                all_events.extend(parse_ics_calendar(await response.text()))
-        except (ClientError, TimeoutError) as err:
+                vega_adapter = self.vega_adapters.get(url)
+                if vega_adapter is not None:
+                    all_events.extend(
+                        await vega_adapter.async_fetch_events(session, dt_util.now().date())
+                    )
+                    continue
+
+                async with session.get(url, timeout=30) as response:
+                    response.raise_for_status()
+                    all_events.extend(parse_ics_calendar(await response.text()))
+        except (ClientError, TimeoutError, ValueError) as err:
             raise UpdateFailed(f"Unable to fetch school calendar: {err}") from err
 
         self.events = all_events
