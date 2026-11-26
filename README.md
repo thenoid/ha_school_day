@@ -6,8 +6,8 @@ ICS school-calendar URLs or public Vega community-calendar URLs.
 ## Entities
 
 - `binary_sensor.school_day`: on when school is considered in session.
-- `binary_sensor.no_school`: on when a `No School` event is found, or when the
-  date is in summer vacation.
+- `binary_sensor.no_school`: on when an event matches a no-school pattern, or
+  when the date is a weekend or in summer vacation.
 - `binary_sensor.summer_vacation`: on after `Last Day of School` until
   `First Day of School (Students)`, or outside a configured school-year range.
 
@@ -34,6 +34,12 @@ date: "12-23-2026"
 Install this repository's `custom_components/school_day` directory into your
 Home Assistant `custom_components` directory, then add the integration from the
 UI.
+
+To edit an existing installation, open **Settings → Devices & services → School
+Day?**, open the entry’s **⋮** menu, and choose **Reconfigure**. You can change
+the calendar URLs, school name, school-year ranges, and all event patterns. The
+form starts with your current settings. Saving reloads the integration and
+updates the existing sensors, so automations retain their entity references.
 
 ## HACS
 
@@ -80,13 +86,22 @@ only decide whether a date is summer vacation when calendar first/last-day
 events are missing or incomplete.
 
 The setup flow also asks for a school name, which is used as the Home Assistant
-device name. Advanced setup options let you customize the event summary patterns
+device name. The settings let you customize the event summary patterns
 used to detect no-school days, last-day boundaries, and first-day boundaries.
-Use one pattern per line. Defaults are:
+Use one pattern per line. Patterns are case-insensitive substring matches.
+
+Default no-school patterns:
 
 ```text
 no school
 no students
-last day of school
-first day of school
+recess
+no activities
 ```
+
+The default last-day pattern is `last day of school`, and the default first-day
+pattern is `first day of school`.
+
+Upgrading to 0.2.7 adds the new no-school patterns to entries still using the
+previous defaults. Custom lists stay unchanged and can be edited using
+**Reconfigure**.

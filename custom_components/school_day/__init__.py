@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
 import logging
+from datetime import date, datetime
 
-from aiohttp import ClientError
 import voluptuous as vol
-
+from aiohttp import ClientError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
+from homeassistant.core import (
+    HomeAssistant,
+    ServiceCall,
+    ServiceResponse,
+    SupportsResponse,
+)
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -26,6 +30,11 @@ from .calendar import (
     parse_ics_calendar,
 )
 from .const import (
+    ATTR_DATE,
+    ATTR_ENTRY_ID,
+    ATTR_NO_SCHOOL,
+    ATTR_SCHOOL_DAY,
+    ATTR_SUMMER_VACATION,
     CONF_FIRST_DAY_PATTERNS,
     CONF_LAST_DAY_PATTERNS,
     CONF_NO_SCHOOL_PATTERNS,
@@ -34,22 +43,18 @@ from .const import (
     DEFAULT_FIRST_DAY_PATTERNS,
     DEFAULT_LAST_DAY_PATTERNS,
     DEFAULT_NO_SCHOOL_PATTERNS,
-    EVENT_NO_SCHOOL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
-    ATTR_DATE,
-    ATTR_ENTRY_ID,
-    ATTR_NO_SCHOOL,
-    ATTR_SCHOOL_DAY,
-    ATTR_SUMMER_VACATION,
+    EVENT_NO_SCHOOL,
+    EVENT_NO_STUDENTS,
     SERVICE_CHECK_DATE,
 )
 from .vega import VegaCalendarAdapter
 
-
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR]
 _LOGGER = logging.getLogger(__name__)
 _LEGACY_DEFAULT_NO_SCHOOL_PATTERNS = (EVENT_NO_SCHOOL,)
+_VERSION_2_DEFAULT_NO_SCHOOL_PATTERNS = (EVENT_NO_SCHOOL, EVENT_NO_STUDENTS)
 SERVICE_SCHEMA_CHECK_DATE = vol.Schema(
     {
         vol.Required(ATTR_DATE): vol.All(cv.string, vol.Match(r"^\d{2}-\d{2}-\d{4}$")),
@@ -166,19 +171,24 @@ class SchoolDayCoordinator(DataUpdateCoordinator[SchoolDayState]):
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Add new default no-school patterns without changing custom patterns."""
-    if entry.version > 2:
+    if entry.version > 3:
         return False
-    if entry.version == 2:
+    if entry.version == 3:
         return True
 
     data = dict(entry.data)
-    no_school_patterns = tuple(
-        data.get(CONF_NO_SCHOOL_PATTERNS, _LEGACY_DEFAULT_NO_SCHOOL_PATTERNS)
-    )
-    if no_school_patterns == _LEGACY_DEFAULT_NO_SCHOOL_PATTERNS:
+    if entry.version == 1:
+        old_defaults = (
+            _LEGACY_DEFAULT_NO_SCHOOL_PATTERNS,
+            _VERSION_2_DEFAULT_NO_SCHOOL_PATTERNS,
+        )
+    else:
+        old_defaults = (_VERSION_2_DEFAULT_NO_SCHOOL_PATTERNS,)
+    no_school_patterns = tuple(data.get(CONF_NO_SCHOOL_PATTERNS, old_defaults[0]))
+    if no_school_patterns in old_defaults:
         data[CONF_NO_SCHOOL_PATTERNS] = list(DEFAULT_NO_SCHOOL_PATTERNS)
 
-    hass.config_entries.async_update_entry(entry, data=data, version=2)
+    hass.config_entries.async_update_entry(entry, data=data, version=3)
     return True
 
 

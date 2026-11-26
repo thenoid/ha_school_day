@@ -254,6 +254,41 @@ END:VCALENDAR
     assert state.no_school is True
 
 
+def test_recess_and_no_activities_use_default_no_school_patterns() -> None:
+    for summary in (
+        "Thanksgiving Recess (no activities)",
+        "Winter Recess",
+        "Martin Luther King Jr. Day Recess",
+        "Presidents' Day Recess",
+        "Spring Break Recess",
+        "District Closure (No Activities)",
+    ):
+        events = [
+            calendar.SchoolCalendarEvent(
+                summary, start=date(2026, 11, 25), end=date(2026, 11, 30)
+            )
+        ]
+        for day in (date(2026, 11, 25), date(2026, 11, 26), date(2026, 11, 27)):
+            state = compute_school_day_state(events, day)
+            assert state.school_day is False, (summary, day)
+            assert state.no_school is True
+            assert state.summer_vacation is False
+
+        assert compute_school_day_state(events, date(2026, 11, 30)).school_day
+
+
+def test_custom_patterns_can_exclude_default_recess_patterns() -> None:
+    events = [
+        calendar.SchoolCalendarEvent(
+            "Winter Recess", start=date(2026, 11, 26), end=date(2026, 11, 27)
+        )
+    ]
+    state = compute_school_day_state(
+        events, date(2026, 11, 26), patterns=SchoolDayPatterns(no_school=("closure",))
+    )
+    assert state.school_day is True
+
+
 def test_custom_boundary_patterns_control_summer_vacation() -> None:
     events = parse_ics_calendar(
         """BEGIN:VCALENDAR
