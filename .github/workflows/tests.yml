@@ -14,9 +14,12 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v7
       - name: Compile integration
         run: python -m compileall custom_components tests
       - name: Run calendar tests
         run: python tests/run_calendar_tests.py
+      - name: Run settings and migration tests
+        run: uv run --no-project --with homeassistant==2026.11.3 python tests/test_config_flow.py
 

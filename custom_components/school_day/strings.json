@@ -3,7 +3,19 @@
     "step": {
       "user": {
         "title": "School Day?",
-        "description": "Add a school name and one or more calendar source URLs. Use ICS URLs or public Vega community URLs. Optional school-year ranges are one per line, formatted like `2025-08-12 to 2026-05-22`.",
+        "description": "Add a school name and one or more calendar source URLs. Use ICS URLs or public Vega community URLs. Optional school-year ranges are one per line, formatted like `2025-08-12 to 2026-05-22`. Event patterns are case-insensitive text matches, one per line.",
+        "data": {
+          "name": "School name",
+          "urls": "Calendar source URLs (ICS or Vega)",
+          "school_years": "Configured school-year ranges",
+          "no_school_patterns": "No-school event patterns",
+          "last_day_patterns": "Last-day event patterns",
+          "first_day_patterns": "First-day event patterns"
+        }
+      },
+      "reconfigure": {
+        "title": "School Day settings",
+        "description": "Change calendar source URLs, school-year ranges, or event patterns. Use one URL or pattern per line. Patterns match event titles without regard to case. Saving reloads this integration and keeps your existing sensors.",
         "data": {
           "name": "School name",
           "urls": "Calendar source URLs (ICS or Vega)",
